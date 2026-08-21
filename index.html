@@ -11,7 +11,7 @@
     <meta name="apple-mobile-web-app-title" content="Candidatures">
     <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/3281/3281289.png">
 
-    <!-- Librairie pour lire les fichiers Excel directement dans le navigateur -->
+    <!-- Librairie pour lire les fichiers Excel -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
     <style>
@@ -51,28 +51,33 @@
         .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
         .full-width { grid-column: span 2; }
 
-        input, select { background: var(--input-bg); border: 1px solid var(--border); color: var(--text); padding: 12px; border-radius: 10px; font-size: 0.9rem; outline: none; width: 100%; }
-        input::placeholder { color: var(--muted); }
+        input, select, textarea { background: var(--input-bg); border: 1px solid var(--border); color: var(--text); padding: 12px; border-radius: 10px; font-size: 0.9rem; outline: none; width: 100%; }
+        textarea { resize: vertical; min-height: 60px; }
+        input::placeholder, textarea::placeholder { color: var(--muted); }
         select { -webkit-appearance: none; appearance: none; }
 
         button.btn-add { background: var(--accent); color: #0f172a; font-weight: 700; border: none; padding: 12px; border-radius: 10px; cursor: pointer; font-size: 0.95rem; transition: opacity 0.2s; }
         
-        .search-bar { margin-bottom: 15px; }
+        .filters-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 15px; }
 
         .list { display: flex; flex-direction: column; gap: 12px; }
         .job-card { background: var(--card-bg); border-radius: 14px; padding: 14px; border: 1px solid rgba(255,255,255,0.05); display: flex; flex-direction: column; gap: 10px; }
         
-        .job-header { display: flex; justify-content: space-between; align-items: flex-start; }
+        .job-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
         .job-title { font-size: 1rem; font-weight: 600; color: var(--text); }
         .job-city { font-size: 0.8rem; color: var(--muted); }
         
-        .status-badge { padding: 4px 10px; border-radius: 20px; font-size: 0.75rem; font-weight: 600; }
+        .status-badge { padding: 6px 10px; border-radius: 20px; font-size: 0.75rem; font-weight: 600; }
         .st-attente { background: rgba(251, 191, 36, 0.15); color: #fbbf24; border: 1px solid rgba(251, 191, 36, 0.3); }
         .st-entretien { background: rgba(52, 211, 153, 0.15); color: #34d399; border: 1px solid rgba(52, 211, 153, 0.3); }
         .st-refus { background: rgba(248, 113, 113, 0.15); color: #f87171; border: 1px solid rgba(248, 113, 113, 0.3); }
 
+        .job-notes { background: rgba(0,0,0,0.15); border: 1px solid rgba(255,255,255,0.05); border-radius: 8px; padding: 8px 10px; }
+        .job-notes textarea { background: transparent; border: none; padding: 0; font-size: 0.82rem; color: #cbd5e1; min-height: 38px; }
+        .job-notes textarea::placeholder { color: #64748b; }
+
         .job-controls { display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.2); padding: 8px 12px; border-radius: 8px; font-size: 0.85rem; }
-        .counter-group { display: flex; align-items: center; gap: 8px; }
+        .counter-group { display: flex; align-items: center; gap: 6px; }
         .btn-mini { background: var(--input-bg); color: var(--text); border: 1px solid var(--border); width: 26px; height: 26px; border-radius: 6px; font-weight: bold; cursor: pointer; display: flex; align-items: center; justify-content: center; }
         .btn-del { background: transparent; border: none; color: #f87171; font-size: 1.1rem; cursor: pointer; padding: 2px 6px; }
     </style>
@@ -109,12 +114,21 @@
                 <option value="Entretien">Entretien</option>
                 <option value="Refus">Refus</option>
             </select>
+            <textarea id="note" class="full-width" placeholder="📝 Note / Remarque (ex: Nom du contact, lien de l'offre, salaire...)"></textarea>
             <button class="btn-add full-width" onclick="ajouter()">+ Ajouter à la liste</button>
         </div>
     </div>
 
-    <div class="search-bar">
-        <input type="text" id="search" placeholder="🔍 Rechercher une entreprise ou ville..." oninput="render()">
+    <!-- RECHERCHE ET TRI -->
+    <div class="filters-grid">
+        <input type="text" id="search" placeholder="🔍 Rechercher..." oninput="render()">
+        <select id="sortBy" onchange="render()">
+            <option value="recent">📅 Plus récents</option>
+            <option value="alpha">🔤 Alphabétique (A-Z)</option>
+            <option value="postule">➕ Plus postulé</option>
+            <option value="relance">🔄 Plus de relances</option>
+            <option value="ancien">⏳ Plus anciens</option>
+        </select>
     </div>
 
     <div class="list" id="job-list"></div>
@@ -142,32 +156,57 @@
         reader.onload = function(evt) {
             try {
                 const data = new Uint8Array(evt.target.result);
-                const workbook = XLSX.read(data, {type: 'array'});
-                const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+                const workbook = XLSX.read(data, {type: 'array', cellDates: true});
                 
-                const jsonRows = XLSX.utils.sheet_to_json(firstSheet, {defval: ""});
-
-                if (jsonRows.length === 0) {
-                    alert('⚠️ Le fichier semble vide.');
-                    return;
-                }
-
                 let ajouts = 0;
-                jsonRows.forEach(row => {
-                    const keys = Object.keys(row);
-                    
-                    let ent = row['Entreprise'] || row['entreprise'] || row['Nom'] || row['AGENCE'] || row['Agence'] || row[keys[0]] || '';
-                    let ville = row['Ville'] || row['ville'] || row['VILLE'] || row['Lieu'] || row[keys[1]] || '';
-                    let st = row['Statut'] || row['statut'] || row['ETAT'] || row['Etat'] || 'En attente';
-                    let postule = parseInt(row['Postulé'] || row['Postule'] || row['Envois']) || 1;
-                    let relance = parseInt(row['Relances'] || row['Relance']) || 0;
 
-                    ent = ent.toString().trim();
-                    ville = ville.toString().trim();
+                workbook.SheetNames.forEach(sheetName => {
+                    const sheet = workbook.Sheets[sheetName];
+                    const jsonRows = XLSX.utils.sheet_to_json(sheet, {defval: "", header: 1});
 
-                    if (ent && ent.toLowerCase() !== 'entreprise' && ent.toLowerCase() !== 'nom') {
-                        candidatures.push({ ent, ville, st: st.toString(), postule, relance });
-                        ajouts++;
+                    if (jsonRows.length === 0) return;
+
+                    let headerIndex = -1;
+                    for (let r = 0; r < Math.min(jsonRows.length, 10); r++) {
+                        const rowStr = jsonRows[r].join(" ").toLowerCase();
+                        if (rowStr.includes("entreprise") || rowStr.includes("nom") || rowStr.includes("agence") || rowStr.includes("ville") || rowStr.includes("societe")) {
+                            headerIndex = r;
+                            break;
+                        }
+                    }
+
+                    if (headerIndex === -1) headerIndex = 0;
+                    const headers = jsonRows[headerIndex].map(h => h.toString().trim().toLowerCase());
+
+                    let idxEnt = headers.findIndex(h => h.includes("entreprise") || h.includes("nom") || h.includes("agence") || h.includes("societe"));
+                    let idxVille = headers.findIndex(h => h.includes("ville") || h.includes("lieu") || h.includes("adresse") || h.includes("cp"));
+                    let idxStatut = headers.findIndex(h => h.includes("statut") || h.includes("etat") || h.includes("avancement"));
+                    let idxNote = headers.findIndex(h => h.includes("note") || h.includes("commentaire") || h.includes("remarque") || h.includes("info"));
+
+                    if (idxEnt === -1) idxEnt = 0;
+                    if (idxVille === -1 && headers.length > 1) idxVille = 1;
+
+                    for (let i = headerIndex + 1; i < jsonRows.length; i++) {
+                        const row = jsonRows[i];
+                        if (!row || row.length === 0) continue;
+
+                        let ent = row[idxEnt] ? row[idxEnt].toString().trim() : '';
+                        let ville = (idxVille !== -1 && row[idxVille]) ? row[idxVille].toString().trim() : '';
+                        let st = (idxStatut !== -1 && row[idxStatut]) ? row[idxStatut].toString().trim() : 'En attente';
+                        let note = (idxNote !== -1 && row[idxNote]) ? row[idxNote].toString().trim() : '';
+
+                        if (ent && ent.toLowerCase() !== 'entreprise' && ent.toLowerCase() !== 'nom' && ent.toLowerCase() !== 'société') {
+                            candidatures.push({
+                                id: Date.now() + Math.random(),
+                                ent: ent,
+                                ville: ville,
+                                st: st || 'En attente',
+                                note: note,
+                                postule: 1,
+                                relance: 0
+                            });
+                            ajouts++;
+                        }
                     }
                 });
 
@@ -175,10 +214,10 @@
                     alert(`✅ ${ajouts} candidatures importées avec succès !`);
                     sync();
                 } else {
-                    alert('⚠️ Impossible de lire les colonnes du fichier.');
+                    alert('⚠️ Aucune donnée lisible n\'a été trouvée dans le fichier.');
                 }
             } catch (err) {
-                alert('Erreur de lecture du fichier : ' + err.message);
+                alert('Erreur de lecture : ' + err.message);
             }
         };
         reader.readAsArrayBuffer(file);
@@ -188,28 +227,53 @@
         const ent = document.getElementById('entreprise').value.trim();
         const ville = document.getElementById('ville').value.trim();
         const st = document.getElementById('statut').value;
+        const note = document.getElementById('note').value.trim();
         
         if (!ent) return alert('Saisis au moins le nom de l\'entreprise.');
 
-        candidatures.unshift({ ent, ville, st, postule: 1, relance: 0 });
+        candidatures.unshift({ 
+            id: Date.now(),
+            ent, 
+            ville, 
+            st, 
+            note,
+            postule: 1, 
+            relance: 0 
+        });
+
         document.getElementById('entreprise').value = '';
         document.getElementById('ville').value = '';
+        document.getElementById('note').value = '';
         sync();
     }
 
-    function modif(i, field, delta) {
-        candidatures[i][field] = Math.max(0, candidatures[i][field] + delta);
-        sync();
+    function modif(id, field, delta) {
+        const idx = candidatures.findIndex(item => item.id === id);
+        if (idx !== -1) {
+            candidatures[idx][field] = Math.max(0, candidatures[idx][field] + delta);
+            sync();
+        }
     }
 
-    function changerStatut(i, newSt) {
-        candidatures[i].st = newSt;
-        sync();
+    function changerStatut(id, newSt) {
+        const idx = candidatures.findIndex(item => item.id === id);
+        if (idx !== -1) {
+            candidatures[idx].st = newSt;
+            sync();
+        }
     }
 
-    function del(i) {
+    function majNote(id, val) {
+        const idx = candidatures.findIndex(item => item.id === id);
+        if (idx !== -1) {
+            candidatures[idx].note = val;
+            localStorage.setItem('dark_pwa_jobs', JSON.stringify(candidatures));
+        }
+    }
+
+    function del(id) {
         if (confirm('Supprimer cette entreprise ?')) {
-            candidatures.splice(i, 1);
+            candidatures = candidatures.filter(item => item.id !== id);
             sync();
         }
     }
@@ -217,18 +281,36 @@
     function render() {
         const list = document.getElementById('job-list');
         const query = document.getElementById('search').value.toLowerCase();
+        const sortBy = document.getElementById('sortBy').value;
         list.innerHTML = '';
 
         let att = 0, ent = 0;
 
-        candidatures.forEach((item, i) => {
+        // Préparation des IDs si pas d'ID (anciennes données)
+        candidatures.forEach((item, index) => {
+            if (!item.id) item.id = Date.now() + index;
             if (item.st === 'En attente') att++;
             if (item.st === 'Entretien') ent++;
+        });
 
-            if (query && !item.ent.toLowerCase().includes(query) && !item.ville.toLowerCase().includes(query)) {
-                return;
-            }
+        // Filtrage par recherche
+        let filtrés = candidatures.filter(item => {
+            if (!query) return true;
+            return item.ent.toLowerCase().includes(query) || 
+                   item.ville.toLowerCase().includes(query) ||
+                   (item.note && item.note.toLowerCase().includes(query));
+        });
 
+        // Tri
+        filtrés.sort((a, b) => {
+            if (sortBy === 'alpha') return a.ent.localeCompare(b.ent);
+            if (sortBy === 'postule') return (b.postule || 0) - (a.postule || 0);
+            if (sortBy === 'relance') return (b.relance || 0) - (a.relance || 0);
+            if (sortBy === 'ancien') return a.id - b.id;
+            return b.id - a.id; // par défaut : récents
+        });
+
+        filtrés.forEach((item) => {
             let badgeClass = 'st-attente';
             if (item.st === 'Entretien') badgeClass = 'st-entretien';
             if (item.st === 'Refus') badgeClass = 'st-refus';
@@ -238,28 +320,33 @@
                     <div class="job-header">
                         <div>
                             <div class="job-title">${item.ent}</div>
-                            <div class="job-city">${item.ville || 'Non spécifiée'}</div>
+                            <div class="job-city">${item.ville || 'Ville non spécifiée'}</div>
                         </div>
-                        <select onchange="changerStatut(${i}, this.value)" class="status-badge ${badgeClass}" style="border:none; cursor:pointer;">
+                        <select onchange="changerStatut(${item.id}, this.value)" class="status-badge ${badgeClass}" style="border:none; cursor:pointer;">
                             <option value="En attente" ${item.st==='En attente'?'selected':''}>En attente</option>
                             <option value="Entretien" ${item.st==='Entretien'?'selected':''}>Entretien</option>
                             <option value="Refus" ${item.st==='Refus'?'selected':''}>Refus</option>
                         </select>
                     </div>
+
+                    <div class="job-notes">
+                        <textarea placeholder="📝 Ajouter une note / commentaire..." onchange="majNote(${item.id}, this.value)">${item.note || ''}</textarea>
+                    </div>
+
                     <div class="job-controls">
                         <div class="counter-group">
                             <span style="color:var(--muted)">Postulé:</span>
-                            <button class="btn-mini" onclick="modif(${i},'postule',-1)">-</button>
-                            <strong>${item.postule}</strong>
-                            <button class="btn-mini" onclick="modif(${i},'postule',1)">+</button>
+                            <button class="btn-mini" onclick="modif(${item.id},'postule',-1)">-</button>
+                            <strong>${item.postule || 1}</strong>
+                            <button class="btn-mini" onclick="modif(${item.id},'postule',1)">+</button>
                         </div>
                         <div class="counter-group">
                             <span style="color:var(--muted)">Relances:</span>
-                            <button class="btn-mini" onclick="modif(${i},'relance',-1)">-</button>
-                            <strong>${item.relance}</strong>
-                            <button class="btn-mini" onclick="modif(${i},'relance',1)">+</button>
+                            <button class="btn-mini" onclick="modif(${item.id},'relance',-1)">-</button>
+                            <strong>${item.relance || 0}</strong>
+                            <button class="btn-mini" onclick="modif(${item.id},'relance',1)">+</button>
                         </div>
-                        <button class="btn-del" onclick="del(${i})">✕</button>
+                        <button class="btn-del" onclick="del(${item.id})">✕</button>
                     </div>
                 </div>
             `;
