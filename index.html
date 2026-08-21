@@ -114,154 +114,55 @@
         </div>
     </div>
 
-    <div class="search-bar">
-        <input type="text" id="search" placeholder="🔍 Rechercher une entreprise ou ville..." oninput="render()">
-    </div>
-
-    <div class="list" id="job-list"></div>
-</div>
-
-<script>
-    if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-            navigator.serviceWorker.register('./sw.js').catch(err => console.log('SW reg error:', err));
-        });
-    }
-
-    let candidatures = JSON.parse(localStorage.getItem('dark_pwa_jobs')) || [];
-
-    function sync() {
-        localStorage.setItem('dark_pwa_jobs', JSON.stringify(candidatures));
-        render();
-    }
-
-    function importerExcel(e) {
+ function importerExcel(e) {
         const file = e.target.files[0];
         if (!file) return;
 
         const reader = new FileReader();
         reader.onload = function(evt) {
-            const data = new Uint8Array(evt.target.result);
-            const workbook = XLSX.read(data, {type: 'array'});
-            const firstSheetName = workbook.SheetNames[0];
-            const worksheet = workbook.Sheets[firstSheetName];
-            const rows = XLSX.utils.sheet_to_json(worksheet, {header: 1});
+            try {
+                const data = new Uint8Array(evt.target.result);
+                const workbook = XLSX.read(data, {type: 'array'});
+                const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+                
+                // Convertit la feuille en objets JS
+                const jsonRows = XLSX.utils.sheet_to_json(firstSheet, {defval: ""});
 
-            let ajouts = 0;
-            rows.forEach((row, idx) => {
-                // sauter la première ligne si c'est les titres de colonnes
-                if (idx === 0 && (row[0] && row[0].toString().toLowerCase().includes('entreprise'))) return;
-                if (!row || row.length === 0) return;
-
-                const ent = row[0] ? row[0].toString().trim() : '';
-                const ville = row[1] ? row[1].toString().trim() : '';
-                const st = row[2] ? row[2].toString().trim() : 'En attente';
-                const postule = row[3] ? parseInt(row[3]) || 1 : 1;
-                const relance = row[4] ? parseInt(row[4]) || 0 : 0;
-
-                if (ent) {
-                    candidatures.push({ ent, ville, st, postule, relance });
-                    ajouts++;
+                if (jsonRows.length === 0) {
+                    alert('⚠️ Le fichier semble vide.');
+                    return;
                 }
-            });
 
-            if (ajouts > 0) {
-                alert(`✅ ${ajouts} entreprises importées dans ton appli !`);
-                sync();
-            } else {
-                alert('⚠️ Aucun contenu trouvé dans le fichier.');
+                let ajouts = 0;
+                jsonRows.forEach(row => {
+                    const keys = Object.keys(row);
+                    
+                    // Récupère intelligemment l'entreprise et la ville peu importe le nom des colonnes
+                    let ent = row['Entreprise'] || row['entreprise'] || row['Nom'] || row['AGENCE'] || row['Agence'] || row[keys[0]] || '';
+                    let ville = row['Ville'] || row['ville'] || row['VILLE'] || row['Lieu'] || row[keys[1]] || '';
+                    let st = row['Statut'] || row['statut'] || row['ETAT'] || row['Etat'] || 'En attente';
+                    let postule = parseInt(row['Postulé'] || row['Postule'] || row['Envois']) || 1;
+                    let relance = parseInt(row['Relances'] || row['Relance']) || 0;
+
+                    ent = ent.toString().trim();
+                    ville = ville.toString().trim();
+
+                    // Évite d'ajouter si c'est vide ou si c'est la ligne d'en-tête
+                    if (ent && ent.toLowerCase() !== 'entreprise' && ent.toLowerCase() !== 'nom') {
+                        candidatures.push({ ent, ville, st: st.toString(), postule, relance });
+                        ajouts++;
+                    }
+                });
+
+                if (ajouts > 0) {
+                    alert(`✅ ${ajouts} candidatures importées avec succès !`);
+                    sync();
+                } else {
+                    alert('⚠️ Impossible de lire les colonnes du fichier.');
+                }
+            } catch (err) {
+                alert('Erreur de lecture du fichier : ' + err.message);
             }
         };
         reader.readAsArrayBuffer(file);
     }
-
-    function ajouter() {
-        const ent = document.getElementById('entreprise').value.trim();
-        const ville = document.getElementById('ville').value.trim();
-        const st = document.getElementById('statut').value;
-        
-        if (!ent) return alert('Saisis au moins le nom de l\'entreprise.');
-
-        candidatures.unshift({ ent, ville, st, postule: 1, relance: 0 });
-        document.getElementById('entreprise').value = '';
-        document.getElementById('ville').value = '';
-        sync();
-    }
-
-    function modif(i, field, delta) {
-        candidatures[i][field] = Math.max(0, candidatures[i][field] + delta);
-        sync();
-    }
-
-    function changerStatut(i, newSt) {
-        candidatures[i].st = newSt;
-        sync();
-    }
-
-    function del(i) {
-        if (confirm('Supprimer cette entreprise ?')) {
-            candidatures.splice(i, 1);
-            sync();
-        }
-    }
-
-    function render() {
-        const list = document.getElementById('job-list');
-        const query = document.getElementById('search').value.toLowerCase();
-        list.innerHTML = '';
-
-        let att = 0, ent = 0;
-
-        candidatures.forEach((item, i) => {
-            if (item.st === 'En attente') att++;
-            if (item.st === 'Entretien') ent++;
-
-            if (query && !item.ent.toLowerCase().includes(query) && !item.ville.toLowerCase().includes(query)) {
-                return;
-            }
-
-            let badgeClass = 'st-attente';
-            if (item.st === 'Entretien') badgeClass = 'st-entretien';
-            if (item.st === 'Refus') badgeClass = 'st-refus';
-
-            list.innerHTML += `
-                <div class="job-card">
-                    <div class="job-header">
-                        <div>
-                            <div class="job-title">${item.ent}</div>
-                            <div class="job-city">${item.ville || 'Non spécifiée'}</div>
-                        </div>
-                        <select onchange="changerStatut(${i}, this.value)" class="status-badge ${badgeClass}" style="border:none; cursor:pointer;">
-                            <option value="En attente" ${item.st==='En attente'?'selected':''}>En attente</option>
-                            <option value="Entretien" ${item.st==='Entretien'?'selected':''}>Entretien</option>
-                            <option value="Refus" ${item.st==='Refus'?'selected':''}>Refus</option>
-                        </select>
-                    </div>
-                    <div class="job-controls">
-                        <div class="counter-group">
-                            <span style="color:var(--muted)">Postulé:</span>
-                            <button class="btn-mini" onclick="modif(${i},'postule',-1)">-</button>
-                            <strong>${item.postule}</strong>
-                            <button class="btn-mini" onclick="modif(${i},'postule',1)">+</button>
-                        </div>
-                        <div class="counter-group">
-                            <span style="color:var(--muted)">Relances:</span>
-                            <button class="btn-mini" onclick="modif(${i},'relance',-1)">-</button>
-                            <strong>${item.relance}</strong>
-                            <button class="btn-mini" onclick="modif(${i},'relance',1)">+</button>
-                        </div>
-                        <button class="btn-del" onclick="del(${i})">✕</button>
-                    </div>
-                </div>
-            `;
-        });
-
-        document.getElementById('st-total').innerText = candidatures.length;
-        document.getElementById('st-attente').innerText = att;
-        document.getElementById('st-entretien').innerText = ent;
-    }
-
-    render();
-</script>
-</body>
-</html>
