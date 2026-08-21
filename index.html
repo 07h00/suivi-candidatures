@@ -11,8 +11,9 @@
     <meta name="apple-mobile-web-app-title" content="Candidatures">
     <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/3281/3281289.png">
 
-    <!-- Librairie pour lire les fichiers Excel -->
+    <!-- Librairies Excel et Supabase -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
     <style>
         :root {
@@ -32,7 +33,9 @@
         
         header { text-align: center; margin-bottom: 20px; margin-top: 10px; }
         h1 { font-size: 1.5rem; font-weight: 700; color: var(--text); letter-spacing: -0.5px; }
-        .subtitle { color: var(--muted); font-size: 0.85rem; margin-top: 4px; }
+        .subtitle { color: var(--muted); font-size: 0.85rem; margin-top: 4px; display: flex; align-items: center; justify-content: center; gap: 6px; }
+
+        .sync-indicator { width: 8px; height: 8px; border-radius: 50%; background: #34d399; display: inline-block; }
 
         .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 20px; }
         .stat-card { background: var(--card-bg); padding: 12px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.05); text-align: center; }
@@ -87,7 +90,7 @@
 <div class="container">
     <header>
         <h1>🎯 Job Tracker</h1>
-        <div class="subtitle">Gestion de tes candidatures</div>
+        <div class="subtitle"><span class="sync-indicator"></span> Synchro Cloud active</div>
     </header>
 
     <div class="stats">
@@ -114,12 +117,11 @@
                 <option value="Entretien">Entretien</option>
                 <option value="Refus">Refus</option>
             </select>
-            <textarea id="note" class="full-width" placeholder="📝 Note / Remarque (ex: Nom du contact, lien de l'offre, salaire...)"></textarea>
+            <textarea id="note" class="full-width" placeholder="📝 Note / Remarque (ex: Nom du contact, lien de l'offre...)"></textarea>
             <button class="btn-add full-width" onclick="ajouter()">+ Ajouter à la liste</button>
         </div>
     </div>
 
-    <!-- RECHERCHE ET TRI -->
     <div class="filters-grid">
         <input type="text" id="search" placeholder="🔍 Rechercher..." oninput="render()">
         <select id="sortBy" onchange="render()">
@@ -135,17 +137,95 @@
 </div>
 
 <script>
-    if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-            navigator.serviceWorker.register('./sw.js').catch(err => console.log('SW reg error:', err));
-        });
+    const SUPABASE_URL = "https://vswlgoejxuoqtwejgynq.supabase.co";
+    const SUPABASE_KEY = "sb_publishable_92uygUhX-beGC_APeGsYnQ_CHD337gA";
+
+    const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+    let candidatures = [];
+
+    // Charger les candidatures depuis Supabase
+    async function chargerDonnees() {
+        const { data, error } = await db.from('candidatures').select('*');
+        if (error) {
+            console.error('Erreur chargement:', error);
+            return;
+        }
+        candidatures = data || [];
+        render();
     }
 
-    let candidatures = JSON.parse(localStorage.getItem('dark_pwa_jobs')) || [];
+    // Écoute en temps réel les changements depuis d'autres appareils
+    db.channel('candidatures-changes')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'candidatures' }, () => {
+            chargerDonnees();
+        })
+        .subscribe();
 
-    function sync() {
-        localStorage.setItem('dark_pwa_jobs', JSON.stringify(candidatures));
+    async function ajouter() {
+        const ent = document.getElementById('entreprise').value.trim();
+        const ville = document.getElementById('ville').value.trim();
+        const st = document.getElementById('statut').value;
+        const note = document.getElementById('note').value.trim();
+        
+        if (!ent) return alert('Saisis au moins le nom de l\'entreprise.');
+
+        const newJob = {
+            id: Date.now(),
+            ent, 
+            ville, 
+            st, 
+            note,
+            postule: 1, 
+            relance: 0 
+        };
+
+        candidatures.unshift(newJob);
         render();
+
+        document.getElementById('entreprise').value = '';
+        document.getElementById('ville').value = '';
+        document.getElementById('note').value = '';
+
+        const { error } = await db.from('candidatures').insert([newJob]);
+        if (error) console.error('Erreur ajout Supabase:', error);
+    }
+
+    async function modif(id, field, delta) {
+        const idx = candidatures.findIndex(item => item.id === id);
+        if (idx !== -1) {
+            candidatures[idx][field] = Math.max(0, (candidatures[idx][field] || 0) + delta);
+            render();
+
+            await db.from('candidatures').update({ [field]: candidatures[idx][field] }).eq('id', id);
+        }
+    }
+
+    async function changerStatut(id, newSt) {
+        const idx = candidatures.findIndex(item => item.id === id);
+        if (idx !== -1) {
+            candidatures[idx].st = newSt;
+            render();
+
+            await db.from('candidatures').update({ st: newSt }).eq('id', id);
+        }
+    }
+
+    async function majNote(id, val) {
+        const idx = candidatures.findIndex(item => item.id === id);
+        if (idx !== -1) {
+            candidatures[idx].note = val;
+            await db.from('candidatures').update({ note: val }).eq('id', id);
+        }
+    }
+
+    async function del(id) {
+        if (confirm('Supprimer cette entreprise ?')) {
+            candidatures = candidatures.filter(item => item.id !== id);
+            render();
+
+            await db.from('candidatures').delete().eq('id', id);
+        }
     }
 
     function importerExcel(e) {
@@ -153,12 +233,12 @@
         if (!file) return;
 
         const reader = new FileReader();
-        reader.onload = function(evt) {
+        reader.onload = async function(evt) {
             try {
                 const data = new Uint8Array(evt.target.result);
                 const workbook = XLSX.read(data, {type: 'array', cellDates: true});
                 
-                let ajouts = 0;
+                let nouveaux = [];
 
                 workbook.SheetNames.forEach(sheetName => {
                     const sheet = workbook.Sheets[sheetName];
@@ -196,8 +276,8 @@
                         let note = (idxNote !== -1 && row[idxNote]) ? row[idxNote].toString().trim() : '';
 
                         if (ent && ent.toLowerCase() !== 'entreprise' && ent.toLowerCase() !== 'nom' && ent.toLowerCase() !== 'société') {
-                            candidatures.push({
-                                id: Date.now() + Math.random(),
+                            nouveaux.push({
+                                id: Date.now() + Math.floor(Math.random() * 100000),
                                 ent: ent,
                                 ville: ville,
                                 st: st || 'En attente',
@@ -205,14 +285,18 @@
                                 postule: 1,
                                 relance: 0
                             });
-                            ajouts++;
                         }
                     }
                 });
 
-                if (ajouts > 0) {
-                    alert(`✅ ${ajouts} candidatures importées avec succès !`);
-                    sync();
+                if (nouveaux.length > 0) {
+                    const { error } = await db.from('candidatures').insert(nouveaux);
+                    if (error) {
+                        alert('Erreur lors de l\'envoi vers le cloud : ' + error.message);
+                    } else {
+                        alert(`✅ ${nouveaux.length} candidatures envoyées sur la base en ligne !`);
+                        chargerDonnees();
+                    }
                 } else {
                     alert('⚠️ Aucune donnée lisible n\'a été trouvée dans le fichier.');
                 }
@@ -223,61 +307,6 @@
         reader.readAsArrayBuffer(file);
     }
 
-    function ajouter() {
-        const ent = document.getElementById('entreprise').value.trim();
-        const ville = document.getElementById('ville').value.trim();
-        const st = document.getElementById('statut').value;
-        const note = document.getElementById('note').value.trim();
-        
-        if (!ent) return alert('Saisis au moins le nom de l\'entreprise.');
-
-        candidatures.unshift({ 
-            id: Date.now(),
-            ent, 
-            ville, 
-            st, 
-            note,
-            postule: 1, 
-            relance: 0 
-        });
-
-        document.getElementById('entreprise').value = '';
-        document.getElementById('ville').value = '';
-        document.getElementById('note').value = '';
-        sync();
-    }
-
-    function modif(id, field, delta) {
-        const idx = candidatures.findIndex(item => item.id === id);
-        if (idx !== -1) {
-            candidatures[idx][field] = Math.max(0, candidatures[idx][field] + delta);
-            sync();
-        }
-    }
-
-    function changerStatut(id, newSt) {
-        const idx = candidatures.findIndex(item => item.id === id);
-        if (idx !== -1) {
-            candidatures[idx].st = newSt;
-            sync();
-        }
-    }
-
-    function majNote(id, val) {
-        const idx = candidatures.findIndex(item => item.id === id);
-        if (idx !== -1) {
-            candidatures[idx].note = val;
-            localStorage.setItem('dark_pwa_jobs', JSON.stringify(candidatures));
-        }
-    }
-
-    function del(id) {
-        if (confirm('Supprimer cette entreprise ?')) {
-            candidatures = candidatures.filter(item => item.id !== id);
-            sync();
-        }
-    }
-
     function render() {
         const list = document.getElementById('job-list');
         const query = document.getElementById('search').value.toLowerCase();
@@ -286,28 +315,24 @@
 
         let att = 0, ent = 0;
 
-        // Préparation des IDs si pas d'ID (anciennes données)
-        candidatures.forEach((item, index) => {
-            if (!item.id) item.id = Date.now() + index;
+        candidatures.forEach((item) => {
             if (item.st === 'En attente') att++;
             if (item.st === 'Entretien') ent++;
         });
 
-        // Filtrage par recherche
         let filtrés = candidatures.filter(item => {
             if (!query) return true;
             return item.ent.toLowerCase().includes(query) || 
-                   item.ville.toLowerCase().includes(query) ||
+                   (item.ville && item.ville.toLowerCase().includes(query)) ||
                    (item.note && item.note.toLowerCase().includes(query));
         });
 
-        // Tri
         filtrés.sort((a, b) => {
             if (sortBy === 'alpha') return a.ent.localeCompare(b.ent);
             if (sortBy === 'postule') return (b.postule || 0) - (a.postule || 0);
             if (sortBy === 'relance') return (b.relance || 0) - (a.relance || 0);
             if (sortBy === 'ancien') return a.id - b.id;
-            return b.id - a.id; // par défaut : récents
+            return b.id - a.id;
         });
 
         filtrés.forEach((item) => {
@@ -357,7 +382,8 @@
         document.getElementById('st-entretien').innerText = ent;
     }
 
-    render();
+    // Chargement initial
+    chargerDonnees();
 </script>
 </body>
 </html>
