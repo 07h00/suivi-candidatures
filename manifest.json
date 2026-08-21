@@ -1,15 +1,17 @@
 {
-  "name": "Suivi Candidatures",
-  "short_name": "Candidatures",
-  "start_url": "/",
+  "name": "Job Tracker",
+  "short_name": "Jobs",
+  "start_url": "./index.html",
+  "scope": "./",
   "display": "standalone",
-  "background_color": "#ffffff",
-  "theme_color": "#1a2b4c",
+  "background_color": "#0f172a",
+  "theme_color": "#0f172a",
   "icons": [
     {
       "src": "https://cdn-icons-png.flaticon.com/512/3281/3281289.png",
       "sizes": "512x512",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any maskable"
     }
   ]
 }
