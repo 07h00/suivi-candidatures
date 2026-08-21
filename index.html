@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Suivi Candidatures</title>
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#1a2b4c">
+    <style>
+        * { box-sizing: border-box; font-family: -apple-system, system-ui, sans-serif; }
+        body { background: #f4f6f8; margin: 0; padding: 15px; color: #333; }
+        .container { max-width: 800px; margin: 0 auto; }
+        h1 { text-align: center; color: #1a2b4c; font-size: 1.5rem; }
+        .card { background: white; border-radius: 12px; padding: 15px; margin-bottom: 15px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+        .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin-bottom: 10px; }
+        input, select, button { padding: 10px; border: 1px solid #ddd; border-radius: 8px; width: 100%; font-size: 14px; }
+        button.btn-add { background: #28a745; color: white; border: none; font-weight: bold; cursor: pointer; grid-column: 1 / -1; }
+        table { width: 100%; border-collapse: collapse; background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+        th, td { padding: 10px; text-align: left; border-bottom: 1px solid #eee; font-size: 13px; }
+        th { background: #1a2b4c; color: white; }
+        .btn-counter { background: #e9ecef; border: 1px solid #ccc; padding: 2px 8px; cursor: pointer; border-radius: 4px; }
+        .btn-del { background: #dc3545; color: white; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>📌 Mes Candidatures PWA</h1>
+
+    <div class="card">
+        <div class="form-grid">
+            <input type="text" id="entreprise" placeholder="Entreprise">
+            <input type="text" id="ville" placeholder="Ville">
+            <select id="statut">
+                <option value="En attente">En attente</option>
+                <option value="Entretien">Entretien</option>
+                <option value="Refus">Refus</option>
+            </select>
+            <button class="btn-add" onclick="ajouter()">+ Ajouter</button>
+        </div>
+    </div>
+
+    <table>
+        <thead>
+            <tr>
+                <th>Entreprise</th>
+                <th>Statut</th>
+                <th>Postulé</th>
+                <th>Relances</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody id="app-list"></tbody>
+    </table>
+</div>
+
+<script>
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('sw.js');
+    }
+
+    let data = JSON.parse(localStorage.getItem('pwa_jobs')) || [];
+
+    function sync() {
+        localStorage.setItem('pwa_jobs', JSON.stringify(data));
+        render();
+    }
+
+    function ajouter() {
+        const ent = document.getElementById('entreprise').value;
+        const ville = document.getElementById('ville').value;
+        const st = document.getElementById('statut').value;
+        if (!ent) return alert('Nom obligatoire');
+        data.push({ ent, ville, st, postule: 1, relance: 0 });
+        document.getElementById('entreprise').value = '';
+        document.getElementById('ville').value = '';
+        sync();
+    }
+
+    function modif(i, field, d) {
+        data[i][field] = Math.max(0, data[i][field] + d);
+        sync();
+    }
+
+    function del(i) {
+        if (confirm('Supprimer ?')) { data.splice(i, 1); sync(); }
+    }
+
+    function render() {
+        const tb = document.getElementById('app-list');
+        tb.innerHTML = '';
+        data.forEach((item, i) => {
+            tb.innerHTML += `
+                <tr>
+                    <td><strong>${item.ent}</strong><br><small>${item.ville || ''}</small></td>
+                    <td>${item.st}</td>
+                    <td><button class="btn-counter" onclick="modif(${i},'postule',-1)">-</button> ${item.postule} <button class="btn-counter" onclick="modif(${i},'postule',1)">+</button></td>
+                    <td><button class="btn-counter" onclick="modif(${i},'relance',-1)">-</button> ${item.relance} <button class="btn-counter" onclick="modif(${i},'relance',1)">+</button></td>
+                    <td><button class="btn-del" onclick="del(${i})">✕</button></td>
+                </tr>
+            `;
+        });
+    }
+    render();
+</script>
+</body>
+</html>
