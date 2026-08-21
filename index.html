@@ -2,105 +2,200 @@
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Suivi Candidatures</title>
     <link rel="manifest" href="manifest.json">
-    <meta name="theme-color" content="#1a2b4c">
+    <meta name="theme-color" content="#0f172a">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Candidatures">
+    <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/3281/3281289.png">
+
     <style>
-        * { box-sizing: border-box; font-family: -apple-system, system-ui, sans-serif; }
-        body { background: #f4f6f8; margin: 0; padding: 15px; color: #333; }
-        .container { max-width: 800px; margin: 0 auto; }
-        h1 { text-align: center; color: #1a2b4c; font-size: 1.5rem; }
-        .card { background: white; border-radius: 12px; padding: 15px; margin-bottom: 15px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
-        .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin-bottom: 10px; }
-        input, select, button { padding: 10px; border: 1px solid #ddd; border-radius: 8px; width: 100%; font-size: 14px; }
-        button.btn-add { background: #28a745; color: white; border: none; font-weight: bold; cursor: pointer; grid-column: 1 / -1; }
-        table { width: 100%; border-collapse: collapse; background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
-        th, td { padding: 10px; text-align: left; border-bottom: 1px solid #eee; font-size: 13px; }
-        th { background: #1a2b4c; color: white; }
-        .btn-counter { background: #e9ecef; border: 1px solid #ccc; padding: 2px 8px; cursor: pointer; border-radius: 4px; }
-        .btn-del { background: #dc3545; color: white; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; }
+        :root {
+            --bg: #0f172a;
+            --card-bg: #1e293b;
+            --input-bg: #334155;
+            --text: #f8fafc;
+            --muted: #94a3b8;
+            --accent: #38bdf8;
+            --border: #475569;
+        }
+
+        * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 0; }
+        body { background: var(--bg); color: var(--text); padding: 16px; padding-bottom: 40px; min-height: 100vh; }
+        
+        .container { max-width: 600px; margin: 0 auto; }
+        
+        header { text-align: center; margin-bottom: 20px; margin-top: 10px; }
+        h1 { font-size: 1.5rem; font-weight: 700; color: var(--text); letter-spacing: -0.5px; }
+        .subtitle { color: var(--muted); font-size: 0.85rem; margin-top: 4px; }
+
+        .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 20px; }
+        .stat-card { background: var(--card-bg); padding: 12px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.05); text-align: center; }
+        .stat-num { font-size: 1.4rem; font-weight: 700; color: var(--accent); }
+        .stat-lbl { font-size: 0.75rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; margin-top: 2px; }
+
+        .card { background: var(--card-bg); border-radius: 16px; padding: 16px; border: 1px solid rgba(255,255,255,0.05); margin-bottom: 20px; }
+        .card-title { font-size: 0.95rem; font-weight: 600; margin-bottom: 12px; color: var(--text); }
+        
+        .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .full-width { grid-column: span 2; }
+
+        input, select { background: var(--input-bg); border: 1px solid var(--border); color: var(--text); padding: 12px; border-radius: 10px; font-size: 0.9rem; outline: none; width: 100%; }
+        input::placeholder { color: var(--muted); }
+        select { -webkit-appearance: none; appearance: none; }
+
+        button.btn-add { background: var(--accent); color: #0f172a; font-weight: 700; border: none; padding: 12px; border-radius: 10px; cursor: pointer; font-size: 0.95rem; transition: opacity 0.2s; }
+        button.btn-add:active { opacity: 0.8; }
+
+        .list { display: flex; flex-direction: column; gap: 12px; }
+        .job-card { background: var(--card-bg); border-radius: 14px; padding: 14px; border: 1px solid rgba(255,255,255,0.05); display: flex; flex-direction: column; gap: 10px; }
+        
+        .job-header { display: flex; justify-content: space-between; align-items: flex-start; }
+        .job-title { font-size: 1rem; font-weight: 600; color: var(--text); }
+        .job-city { font-size: 0.8rem; color: var(--muted); }
+        
+        .status-badge { padding: 4px 10px; border-radius: 20px; font-size: 0.75rem; font-weight: 600; }
+        .st-attente { background: rgba(251, 191, 36, 0.15); color: #fbbf24; border: 1px solid rgba(251, 191, 36, 0.3); }
+        .st-entretien { background: rgba(52, 211, 153, 0.15); color: #34d399; border: 1px solid rgba(52, 211, 153, 0.3); }
+        .st-refus { background: rgba(248, 113, 113, 0.15); color: #f87171; border: 1px solid rgba(248, 113, 113, 0.3); }
+
+        .job-controls { display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.2); padding: 8px 12px; border-radius: 8px; font-size: 0.85rem; }
+        .counter-group { display: flex; align-items: center; gap: 8px; }
+        .btn-mini { background: var(--input-bg); color: var(--text); border: 1px solid var(--border); width: 26px; height: 26px; border-radius: 6px; font-weight: bold; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+        
+        .btn-del { background: transparent; border: none; color: #f87171; font-size: 1.1rem; cursor: pointer; padding: 2px 6px; }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h1>📌 Mes Candidatures PWA</h1>
+    <header>
+        <h1>🎯 Job Tracker</h1>
+        <div class="subtitle">Gestion de tes candidatures</div>
+    </header>
+
+    <div class="stats">
+        <div class="stat-card"><div class="stat-num" id="st-total">0</div><div class="stat-lbl">Total</div></div>
+        <div class="stat-card"><div class="stat-num" id="st-attente" style="color: #fbbf24;">0</div><div class="stat-lbl">En attente</div></div>
+        <div class="stat-card"><div class="stat-num" id="st-entretien" style="color: #34d399;">0</div><div class="stat-lbl">Entretiens</div></div>
+    </div>
 
     <div class="card">
+        <div class="card-title">Nouvelle candidature</div>
         <div class="form-grid">
             <input type="text" id="entreprise" placeholder="Entreprise">
             <input type="text" id="ville" placeholder="Ville">
-            <select id="statut">
+            <select id="statut" class="full-width">
                 <option value="En attente">En attente</option>
                 <option value="Entretien">Entretien</option>
                 <option value="Refus">Refus</option>
             </select>
-            <button class="btn-add" onclick="ajouter()">+ Ajouter</button>
+            <button class="btn-add full-width" onclick="ajouter()">+ Ajouter à la liste</button>
         </div>
     </div>
 
-    <table>
-        <thead>
-            <tr>
-                <th>Entreprise</th>
-                <th>Statut</th>
-                <th>Postulé</th>
-                <th>Relances</th>
-                <th></th>
-            </tr>
-        </thead>
-        <tbody id="app-list"></tbody>
-    </table>
+    <div class="list" id="job-list"></div>
 </div>
 
 <script>
     if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('sw.js');
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register('./sw.js').catch(err => console.log('SW reg error:', err));
+        });
     }
 
-    let data = JSON.parse(localStorage.getItem('pwa_jobs')) || [];
+    let candidatures = JSON.parse(localStorage.getItem('dark_pwa_jobs')) || [
+        { ent: 'Citya', ville: 'Tours', st: 'Refus', postule: 1, relance: 3 }
+    ];
 
     function sync() {
-        localStorage.setItem('pwa_jobs', JSON.stringify(data));
+        localStorage.setItem('dark_pwa_jobs', JSON.stringify(candidatures));
         render();
     }
 
     function ajouter() {
-        const ent = document.getElementById('entreprise').value;
-        const ville = document.getElementById('ville').value;
+        const ent = document.getElementById('entreprise').value.trim();
+        const ville = document.getElementById('ville').value.trim();
         const st = document.getElementById('statut').value;
-        if (!ent) return alert('Nom obligatoire');
-        data.push({ ent, ville, st, postule: 1, relance: 0 });
+        
+        if (!ent) return alert('Saisis au moins le nom de l\'entreprise.');
+
+        candidatures.unshift({ ent, ville, st, postule: 1, relance: 0 });
         document.getElementById('entreprise').value = '';
         document.getElementById('ville').value = '';
         sync();
     }
 
-    function modif(i, field, d) {
-        data[i][field] = Math.max(0, data[i][field] + d);
+    function modif(i, field, delta) {
+        candidatures[i][field] = Math.max(0, candidatures[i][field] + delta);
+        sync();
+    }
+
+    function changerStatut(i, newSt) {
+        candidatures[i].st = newSt;
         sync();
     }
 
     function del(i) {
-        if (confirm('Supprimer ?')) { data.splice(i, 1); sync(); }
+        if (confirm('Supprimer cette entreprise ?')) {
+            candidatures.splice(i, 1);
+            sync();
+        }
     }
 
     function render() {
-        const tb = document.getElementById('app-list');
-        tb.innerHTML = '';
-        data.forEach((item, i) => {
-            tb.innerHTML += `
-                <tr>
-                    <td><strong>${item.ent}</strong><br><small>${item.ville || ''}</small></td>
-                    <td>${item.st}</td>
-                    <td><button class="btn-counter" onclick="modif(${i},'postule',-1)">-</button> ${item.postule} <button class="btn-counter" onclick="modif(${i},'postule',1)">+</button></td>
-                    <td><button class="btn-counter" onclick="modif(${i},'relance',-1)">-</button> ${item.relance} <button class="btn-counter" onclick="modif(${i},'relance',1)">+</button></td>
-                    <td><button class="btn-del" onclick="del(${i})">✕</button></td>
-                </tr>
+        const list = document.getElementById('job-list');
+        list.innerHTML = '';
+
+        let att = 0, ent = 0;
+
+        candidatures.forEach((item, i) => {
+            if (item.st === 'En attente') att++;
+            if (item.st === 'Entretien') ent++;
+
+            let badgeClass = 'st-attente';
+            if (item.st === 'Entretien') badgeClass = 'st-entretien';
+            if (item.st === 'Refus') badgeClass = 'st-refus';
+
+            list.innerHTML += `
+                <div class="job-card">
+                    <div class="job-header">
+                        <div>
+                            <div class="job-title">${item.ent}</div>
+                            <div class="job-city">${item.ville || 'Non spécifié'}</div>
+                        </div>
+                        <select onchange="changerStatut(${i}, this.value)" class="status-badge ${badgeClass}" style="border:none; cursor:pointer;">
+                            <option value="En attente" ${item.st==='En attente'?'selected':''}>En attente</option>
+                            <option value="Entretien" ${item.st==='Entretien'?'selected':''}>Entretien</option>
+                            <option value="Refus" ${item.st==='Refus'?'selected':''}>Refus</option>
+                        </select>
+                    </div>
+                    <div class="job-controls">
+                        <div class="counter-group">
+                            <span style="color:var(--muted)">Postulé:</span>
+                            <button class="btn-mini" onclick="modif(${i},'postule',-1)">-</button>
+                            <strong>${item.postule}</strong>
+                            <button class="btn-mini" onclick="modif(${i},'postule',1)">+</button>
+                        </div>
+                        <div class="counter-group">
+                            <span style="color:var(--muted)">Relances:</span>
+                            <button class="btn-mini" onclick="modif(${i},'relance',-1)">-</button>
+                            <strong>${item.relance}</strong>
+                            <button class="btn-mini" onclick="modif(${i},'relance',1)">+</button>
+                        </div>
+                        <button class="btn-del" onclick="del(${i})">✕</button>
+                    </div>
+                </div>
             `;
         });
+
+        document.getElementById('st-total').innerText = candidatures.length;
+        document.getElementById('st-attente').innerText = att;
+        document.getElementById('st-entretien').innerText = ent;
     }
+
     render();
 </script>
 </body>
