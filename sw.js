@@ -1,7 +1,15 @@
+const CACHE_NAME = 'jobs-v2';
+
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open('pwa-v1').then((cache) => cache.addAll(['/'])));
+  self.skipWaiting();
+});
+
+self.addEventListener('activate', (e) => {
+  e.waitUntil(clients.claim());
 });
 
 self.addEventListener('fetch', (e) => {
-  e.respondWith(caches.match(e.request).then((res) => res || fetch(e.request)));
+  e.respondWith(
+    fetch(e.request).catch(() => caches.match(e.request))
+  );
 });
